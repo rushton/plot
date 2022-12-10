@@ -11,6 +11,14 @@ import (
 )
 
 func main() {
+	if hasFlag("--help") || hasFlag("-h") {
+		fmt.Println(`Usage: plot [--headers] [--help|-h]
+plot reads input from stdin in space-delimited format and generates a line graph representing the data.
+
+--headers specifies the input has a header row which should be used as the labels
+--help|-h displays this help message`)
+		os.Exit(0)
+	}
 	numParts, fname, err := readInput(bufio.NewReader(os.Stdin))
 	if err != nil {
 		log.Fatalf("failed to read input: %v", err)
@@ -18,12 +26,16 @@ func main() {
 	if numParts < 2 {
 		log.Fatalf("Can't plot with fewer than 2 columns.")
 	}
-	scriptFileName, err := writeScript(numParts, fname)
+
+	fp, err := os.Create("/tmp/tmp.plot")
 	if err != nil {
-		log.Fatalf("Erorr writing script file: %v", err)
+		log.Fatalf("failed to create script file: %v", err)
 	}
 
-	cmd := exec.Command("gnuplot", "-c", scriptFileName)
+	plot(fp, numParts, hasFlag("--headers"), fname)
+	keyPressReload(fp)
+
+	cmd := exec.Command("gnuplot", "-c", "/tmp/tmp.plot")
 	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	if err != nil {
@@ -31,25 +43,47 @@ func main() {
 	}
 }
 
-func writeScript(numColumns int, dataFileName string) (string, error) {
-	fp, err := os.Create("/tmp/tmp.plot")
-	if err != nil {
-		return "", err
+// hasFlag checks whether a target flag is present in the command arguments.
+func hasFlag(target string) bool {
+	for _, arg := range os.Args {
+		if arg == target {
+			return true
+		}
+	}
+	return false
+}
+
+// writeScript generates a gnuplot script file using the specified numColumns. hasHeaderColumn specifies if a header row is present in the data. dataFileName represents the target data file to use as input. The function returns an filepath to the script and an error if present.
+func plot(w io.Writer, numColumns int, hasHeaderColumn bool, dataFileName string) {
+	if hasHeaderColumn {
+		w.Write([]byte("set key autotitle columnhead\n"))
 	}
 
-	fp.WriteString("plot")
+	w.Write([]byte("plot"))
 	for i := 1; i < numColumns; i++ {
 		if i > 1 {
-			fp.WriteString(", ")
+			w.Write([]byte(", "))
 		}
-		fp.WriteString(fmt.Sprintf(" '%s' using 1:%d with lines", dataFileName, i+1))
+		w.Write([]byte(fmt.Sprintf(" '%s' using 1:%d with lines", dataFileName, i+1)))
 	}
-	fp.WriteString("\n")
-	fp.WriteString("pause mouse keypress\n")
-	fp.WriteString("if (MOUSE_KEY == 27) exit 0\n")
-	fp.WriteString("reread")
-	return "/tmp/tmp.plot", err
+	// TODO: should catch Write errors
 }
+
+func keyPressReload(w io.Writer) {
+	w.Write([]byte(`
+pause mouse keypress\n
+if (MOUSE_KEY == 27) exit 0\n
+reread`))
+}
+
+func setTimeColumn(w io.Writer) {
+	w.Write([]byte(`set timefmt '%Y-%m-%dT%H:%M:%S'
+set format x '%Y-%m-%d'`))
+}
+
+// readInput reads input from the inp and returns the
+// number of columns present, the filepath of the temporary
+// data location, and any error if present.
 func readInput(inp io.Reader) (int, string, error) {
 	lines := bufio.NewReader(inp)
 	line, err := lines.ReadString('\n')
