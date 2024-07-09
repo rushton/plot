@@ -12,10 +12,12 @@ import (
 
 func main() {
 	if hasFlag("--help") || hasFlag("-h") {
-		fmt.Println(`Usage: plot [--headers] [--help|-h]
+		fmt.Println(`Usage: plot [--headers] [--date] [--human-numbers] [--help|-h]
 plot reads input from stdin in space-delimited format and generates a line graph representing the data.
 
 --headers specifies the input has a header row which should be used as the labels
+--date specifies the x axis is a date
+--human-numbers makes numbers in the y-axis human readable (e.g. 2k, 2M, 2B, etc)
 --help|-h displays this help message`)
 		os.Exit(0)
 	}
@@ -32,6 +34,12 @@ plot reads input from stdin in space-delimited format and generates a line graph
 		log.Fatalf("failed to create script file: %v", err)
 	}
 
+    if hasFlag("--date") {
+        setTimeColumn(fp)
+    }
+    if hasFlag("--human-numbers") {
+        approximateNumberFormat(fp)
+    }
 	plot(fp, numParts, hasFlag("--headers"), fname)
 	keyPressReload(fp)
 
@@ -59,7 +67,8 @@ func plot(w io.Writer, numColumns int, hasHeaderColumn bool, dataFileName string
 		w.Write([]byte("set key autotitle columnhead\n"))
 	}
 
-	w.Write([]byte("plot"))
+	w.Write([]byte(`
+plot`))
 	for i := 1; i < numColumns; i++ {
 		if i > 1 {
 			w.Write([]byte(", "))
@@ -71,14 +80,21 @@ func plot(w io.Writer, numColumns int, hasHeaderColumn bool, dataFileName string
 
 func keyPressReload(w io.Writer) {
 	w.Write([]byte(`
-pause mouse keypress\n
-if (MOUSE_KEY == 27) exit 0\n
+pause mouse keypress
+if (MOUSE_KEY == 27) exit 0
 reread`))
 }
 
 func setTimeColumn(w io.Writer) {
-	w.Write([]byte(`set timefmt '%Y-%m-%dT%H:%M:%S'
+	w.Write([]byte(`
+set timefmt '%Y-%m-%dT%H:%M:%SZ'
+set xdata time
 set format x '%Y-%m-%d'`))
+}
+
+func approximateNumberFormat(w io.Writer) {
+    w.Write([]byte(`
+set format y '%.s%c'`))
 }
 
 // readInput reads input from the inp and returns the
