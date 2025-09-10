@@ -89,7 +89,8 @@ func setTimeColumn(w io.Writer) {
 	w.Write([]byte(`
 set timefmt '%Y-%m-%dT%H:%M:%SZ'
 set xdata time
-set format x '%Y-%m-%d'`))
+set format x '%Y-%m-%d'
+`))
 }
 
 func approximateNumberFormat(w io.Writer) {
