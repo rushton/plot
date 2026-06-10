@@ -12,12 +12,15 @@ import (
 
 func main() {
 	if hasFlag("--help") || hasFlag("-h") {
-		fmt.Println(`Usage: plot [--headers] [--date] [--human-numbers] [--help|-h]
+		fmt.Println(`Usage: plot [--headers] [--date] [--human-numbers] [--title <title>] [--line-color <color>] [--output|-o <file>] [--help|-h]
 plot reads input from stdin in space-delimited format and generates a line graph representing the data.
 
 --headers specifies the input has a header row which should be used as the labels
 --date specifies the x axis is a date
 --human-numbers makes numbers in the y-axis human readable (e.g. 2k, 2M, 2B, etc)
+--title <title> sets a title for the plot
+--line-color <color> sets the line color for a value column; repeat for each column (e.g. --line-color red --line-color '#00aaff')
+--output|-o <file> writes a PNG image to the given file instead of displaying interactively
 --help|-h displays this help message`)
 		os.Exit(0)
 	}
@@ -34,20 +37,34 @@ plot reads input from stdin in space-delimited format and generates a line graph
 		log.Fatalf("failed to create script file: %v", err)
 	}
 
-    if hasFlag("--date") {
-        setTimeColumn(fp)
-    }
-    if hasFlag("--human-numbers") {
-        approximateNumberFormat(fp)
-    }
-	plot(fp, numParts, hasFlag("--headers"), fname)
-	keyPressReload(fp)
+	outputFile := flagValue("--output", "-o")
+
+	if hasFlag("--date") {
+		setTimeColumn(fp)
+	}
+	if hasFlag("--human-numbers") {
+		approximateNumberFormat(fp)
+	}
+	if outputFile != "" {
+		setPNGOutput(fp, outputFile)
+	}
+	if title := flagValue("--title"); title != "" {
+		setTitle(fp, title)
+	}
+	plot(fp, numParts, hasFlag("--headers"), fname, flagValues("--line-color"))
+	if outputFile == "" {
+		keyPressReload(fp)
+	}
 
 	cmd := exec.Command("gnuplot", "-c", "/tmp/tmp.plot")
 	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	if err != nil {
 		log.Fatalf("cmd failed: %v", err)
+	}
+
+	if outputFile != "" {
+		exec.Command("open", outputFile).Run()
 	}
 }
 
@@ -61,8 +78,39 @@ func hasFlag(target string) bool {
 	return false
 }
 
+// flagValue returns the value following any of the given flag names, or empty string if not found.
+func flagValue(flags ...string) string {
+	for i, arg := range os.Args {
+		for _, flag := range flags {
+			if arg == flag && i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// flagValues returns all values following occurrences of flag in the arguments.
+func flagValues(flag string) []string {
+	var vals []string
+	for i, arg := range os.Args {
+		if arg == flag && i+1 < len(os.Args) {
+			vals = append(vals, os.Args[i+1])
+		}
+	}
+	return vals
+}
+
+func setTitle(w io.Writer, title string) {
+	w.Write([]byte(fmt.Sprintf("set title '%s' font 'Helvetica Bold,20'\n", title)))
+}
+
+func setPNGOutput(w io.Writer, outputFile string) {
+	w.Write([]byte(fmt.Sprintf("set terminal pngcairo noenhanced size 2400,1600 font 'Helvetica,16'\nset output '%s'\n", outputFile)))
+}
+
 // writeScript generates a gnuplot script file using the specified numColumns. hasHeaderColumn specifies if a header row is present in the data. dataFileName represents the target data file to use as input. The function returns an filepath to the script and an error if present.
-func plot(w io.Writer, numColumns int, hasHeaderColumn bool, dataFileName string) {
+func plot(w io.Writer, numColumns int, hasHeaderColumn bool, dataFileName string, lineColors []string) {
 	if hasHeaderColumn {
 		w.Write([]byte("set key autotitle columnhead\n"))
 	}
@@ -73,7 +121,11 @@ plot`))
 		if i > 1 {
 			w.Write([]byte(", "))
 		}
-		w.Write([]byte(fmt.Sprintf(" '%s' using 1:%d with lines", dataFileName, i+1)))
+		color := ""
+		if i-1 < len(lineColors) {
+			color = fmt.Sprintf(" lc rgb '%s'", lineColors[i-1])
+		}
+		w.Write([]byte(fmt.Sprintf(" '%s' using 1:%d with lines lw 2%s", dataFileName, i+1, color)))
 	}
 	// TODO: should catch Write errors
 }
@@ -94,8 +146,9 @@ set format x '%Y-%m-%d'
 }
 
 func approximateNumberFormat(w io.Writer) {
-    w.Write([]byte(`
-set format y '%.s%c'`))
+	w.Write([]byte(`
+set format y '%.s%c'
+`))
 }
 
 // readInput reads input from the inp and returns the
