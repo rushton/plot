@@ -13,6 +13,12 @@ seq 100 | awk '{print $1, $1*2, $1*4}' | plot
 
 # Date-based time series
 {echo "date value" && for i in {1..30}; do echo "2023-01-$i $((RANDOM % 100))"; done} | plot --date
+
+# With a title and custom line colors
+seq 100 | awk '{print $1, $1*2, $1*4}' | plot --title "My Chart" --line-color red --line-color '#00aaff'
+
+# Save to PNG
+seq 100 | awk '{print $1, $1*2}' | plot --output out.png
 ```
 
 ## Installation
@@ -43,6 +49,9 @@ plot [OPTIONS]
 | `--headers` | Input has header row |
 | `--date` | X-axis contains dates |
 | `--human-numbers` | Make Y-axis numbers human readable (e.g., 2k, 2M, 2B) |
+| `--title <title>` | Set a bold title for the plot |
+| `--line-color <color>` | Set line color for a value column; repeat for each column |
+| `--output`, `-o <file>` | Write a PNG image to the given file instead of displaying interactively |
 
 ### Input Format
 
